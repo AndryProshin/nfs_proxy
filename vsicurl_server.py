@@ -178,15 +178,22 @@ def run_server(port=8000, directory=None, threaded=True):
     if directory:
         os.chdir(directory)
     
-    # Выбираем сервер (многопоточный или обычный)
-    server_class = ThreadingHTTPServer if threaded else HTTPServer
-    server = server_class(('', port), VSICurlHandler)
+    # Создаем сервер
+    server = None
+    if threaded:
+        server = ThreadingHTTPServer(('', port), VSICurlHandler)
+        # Устанавливаем таймаут для сервера, чтобы он периодически проверял флаги
+        server.timeout = 0.5
+    else:
+        server = HTTPServer(('', port), VSICurlHandler)
     
-    # Обработка Ctrl+C
+    # Флаг для остановки
+    stop_server = False
+    
     def signal_handler(sig, frame):
-        print("\nОстанавливаем сервер...")
-        server.shutdown()
-        sys.exit(0)
+        nonlocal stop_server
+        print("\n🛑 Останавливаем сервер...")
+        stop_server = True
     
     signal.signal(signal.SIGINT, signal_handler)
     
@@ -207,10 +214,21 @@ def run_server(port=8000, directory=None, threaded=True):
     print("=" * 60)
     
     try:
-        server.serve_forever()
+        # Ручной цикл обработки запросов с проверкой флага
+        while not stop_server:
+            server.handle_request()
     except KeyboardInterrupt:
-        print("\nСервер остановлен")
-        server.shutdown()
+        pass
+    finally:
+        server.server_close()
+        print("\n👋 Сервер остановлен")
+        # Принудительно завершаем все потоки
+        if threaded:
+            import threading
+            for thread in threading.enumerate():
+                if thread != threading.main_thread():
+                    thread.join(timeout=0.1)
+        sys.exit(0)
 
 if __name__ == '__main__':
     # Парсинг аргументов командной строки
