@@ -1,20 +1,20 @@
-# simple_server_fixed.py
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+# for whole files only
+
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import os
 
-class RangeHTTPRequestHandler(SimpleHTTPRequestHandler):
-    def end_headers(self):
-        # Это самая важная строка - говорит GDAL, что поддерживаем частичное чтение
-        self.send_header('Accept-Ranges', 'bytes')
-        super().end_headers()
-    
+class MinimalHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Просто вызываем родительский метод, он уже умеет обрабатывать Range
-        super().do_GET()
+        filename = self.path.lstrip('/')
+        try:
+            with open(filename, 'rb') as f:
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/tiff')
+                self.send_header('Content-Length', str(os.path.getsize(filename)))
+                self.end_headers()
+                self.wfile.write(f.read())
+        except:
+            self.send_error(404)
 
-# Запуск
-port = 8000
-server = HTTPServer(('', port), RangeHTTPRequestHandler)
-print(f"Сервер на http://localhost:{port} с поддержкой Range")
-print(f"Директория: {os.getcwd()}")
-server.serve_forever()
+print("Сервер на порту 8000 (без Range, но GDAL будет работать с GDAL_HTTP_SUPPORTED_RANGE=NO)")
+HTTPServer(('', 8000), MinimalHandler).serve_forever()
